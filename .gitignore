@@ -129,7 +129,7 @@ dmypy.json
 .pyre/
 
 # User added
-.idea1/
+.idea/
 files/
 figures/
 .DS_Store
