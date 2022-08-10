@@ -1,3 +1,6 @@
+"""
+Analyzing all experiments for the paper.
+"""
 import numpy as np
 import time
 import roblib
@@ -66,6 +69,14 @@ def vary_len_b8(name_filter=''):
     analyze_path('vary_len_b8', name_filter)
 
 
+def fixed_len_b8_level128(name_filter=''):
+    analyze_path('fixed_len_b8_level128', name_filter)
+
+
+def monitor_snr_500_128levels(name_filter=''):
+    analyze_path('monitor_snr_500_128levels', name_filter)
+
+
 def vary_dim(name_filter=''):
     analyze_path('vary_dim', name_filter)
 
@@ -82,6 +93,10 @@ def co_vary(name_filter=''):
     analyze_path('vary_len_b7', name_filter, force_params)
     analyze_path('vary_len_b8', name_filter, force_params)
 
+
+def co_vary_6_facefillin(name_filter=''):
+    force_params = {'SNR_thre': 0.5}
+    analyze_path('co_vary_6_facefillin', name_filter, force_params)
 
 def co_vary_lowthre(name_filter=''):
     force_params = {'SNR_thre': 0.1, 'FC_thre': 0.53, 'FD_thre': 0.53, 'AUC_thre': 0.53}

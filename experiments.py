@@ -1,7 +1,14 @@
+"""
+All experiments for the paper.
+config: the baseline config.
+config_ranges: the config items to be varied.
+"""
 from utils import vary_config
 import numpy as np
 import pprint
 #from birdseye import eye
+
+
 def co_vary():
     # only for b=9 N=1024; too much time!
     beakers = [9] # , 8, 7, 6, 5, 4, 3, 2, 1]
@@ -45,6 +52,33 @@ def co_vary10():
             'pattern_type': ['face',
                              'rand'],
             'seed': range(10, seed_num),
+        }
+        configs += vary_config(config, config_ranges, mode='combinatorial')
+
+    return configs
+
+
+def co_vary_6_facefillin():
+    beakers = [6]
+    seed_num = 5
+    config={
+        'save_path':'co_vary_6_facefillin',
+        'isdiscrete': True,
+        'burnin_num': 2*10**5,
+        'fillin_num': 2*10**5,
+        'sample_num': 2000,
+        'face_fillin_pattern': True,
+
+    }
+    configs=[]
+    for b in beakers:
+        config_ranges = {
+            'dim_num': [2**(b+1)],
+            'beaker_num': [b],
+            'pattern_type': ['face',
+                             #'rand'
+                             ],
+            'seed': range(seed_num),
         }
         configs += vary_config(config, config_ranges, mode='combinatorial')
 
@@ -173,23 +207,92 @@ def big_as_mel_match():
 def monitor_snr():
     config = {
         'save_path': 'monitor_snr',
-        'dim_num': 32,
+        'dim_num': 64,
         'isdiscrete': True,
         'burnin_num': 20000,
-        'fillin_num': 4000,
-        'sample_num': 400,
+        'rpt': 30, # target re-present time
+        # 'fillin_num': 200000,
+        'sample_num': 100,
     }
 
     config_ranges = {
-        'beaker_num': [6,5,4,3,2,1],
+        'beaker_num': [7,6,5,1],
         'pattern_type': ['rand'],
-        'seed': [0],
+        'seed': range(10),
     }
 
     configs = vary_config(config, config_ranges, mode='combinatorial')
 
     return configs
 
+
+def monitor_snr_500_128levels():
+    config = {
+        'save_path': 'monitor_snr_500_128levels',
+        'dim_num': 64,
+        'isdiscrete': True,
+        'burnin_num': 40000,
+        'level_num': 128,
+        'rpt': 500, # target re-present time
+        # 'fillin_num': 200000,
+        'sample_num': 100,
+        'monitor_threshold':0.5,
+    }
+
+    config_ranges = {
+        'beaker_num': [8,7,6,5,4,3,2,1],
+        'pattern_type': ['rand'],
+        'seed': range(10),
+    }
+
+    configs = vary_config(config, config_ranges, mode='combinatorial')
+
+    return configs
+
+def monitor_snr_300():
+    config = {
+        'save_path': 'monitor_snr_300',
+        'dim_num': 64,
+        'isdiscrete': True,
+        'burnin_num': 40000,
+        'rpt': 300, # target re-present time
+        # 'fillin_num': 200000,
+        'sample_num': 100,
+        'monitor_threshold':0.5,
+    }
+
+    config_ranges = {
+        'beaker_num': [8,7,6,5,4,3,2,1],
+        'pattern_type': ['rand'],
+        'seed': range(10),
+    }
+
+    configs = vary_config(config, config_ranges, mode='combinatorial')
+
+    return configs
+
+
+def monitor_snr_50():
+    config = {
+        'save_path': 'monitor_snr_50',
+        'dim_num': 64,
+        'isdiscrete': True,
+        'burnin_num': 40000,
+        'rpt': 50, # target re-present time
+        # 'fillin_num': 200000,
+        'sample_num': 100,
+        'monitor_threshold':0.5,
+    }
+
+    config_ranges = {
+        'beaker_num': [8,7,6,5,1],
+        'pattern_type': ['rand'],
+        'seed': range(10),
+    }
+
+    configs = vary_config(config, config_ranges, mode='combinatorial')
+
+    return configs
 
 def vary_len_b7():
     seed_num = 6
@@ -213,6 +316,27 @@ def vary_len_b7():
 
     return configs
 
+def fixed_len_b8_level128():
+    seed_num = 15
+    config={
+        'save_path':'fixed_len_b8_level128',
+        'dim_num': 512,
+        'isdiscrete': True,
+        'beaker_num': 8,
+        'burnin_num': 8*10**5,
+        'fillin_num': 8*10**5,
+        'sample_num': 1000, # (test_num=3, sample_num=1000, neuron_num=512, neuron_num=512) -> 577M +5994M =6571M
+    }
+
+    config_ranges = {
+        'beaker_num':[8, ],
+        'pattern_type': ['rand'],
+        'seed': range(seed_num),
+    }
+
+    configs = vary_config(config, config_ranges, mode='combinatorial')
+
+    return configs
 
 def vary_len_b8():
     seed_num = 15

@@ -1,3 +1,6 @@
+"""
+General functions for analyzing the memory neural system
+"""
 import numpy as np
 import roblib
 import settings

@@ -1,3 +1,6 @@
+"""
+General functions for loading data from disk and generating random patterns
+"""
 import roblib
 import numpy as np
 from scipy.io import loadmat
@@ -30,7 +33,9 @@ def vgg_preprocess(pl_des=None):
         pl_des = [('pca', 2048)]  # [('pca',1024)]
 
     # load original vggface
-    with open(settings.DATAPATH / "name_and_pattern.pkl", "rb") as f:
+    file = settings.DATAPATH / "name_and_pattern.pkl"
+    file = r'F:\fusilab\oriData\name_and_pattern.pkl'
+    with open(file, "rb") as f:
         [name_list, face_list] = pickle.load(f, encoding='bytes')
     labels_name = [x[:7] for x in name_list]
     features = np.array(face_list)
@@ -48,7 +53,7 @@ def vgg_preprocess(pl_des=None):
     final_features=[]
     poses_loc_of_ids = [np.where(labels == id)[0] for id in identities]
     # locations of poses for every identity
-    for pose_idx in range(2):
+    for pose_idx in range(50): # 2
         pose_locs = [poses_loc_of_id[pose_idx] for poses_loc_of_id in poses_loc_of_ids]
         # location of one specific pose for every identity
         final_features.append(features[pose_locs])
@@ -106,12 +111,19 @@ def load_realface_patterns(sample_num, feature_num, pose_num):
     # median computed on all samples
 
 
-def load_aux_patterns(sample_num, feature_num, aug_pattern_type=None, sparse_coding=False, coding_f=0.5, verbose=True):
+def load_aux_patterns(sample_num, feature_num, aug_pattern_type=None, sparse_coding=False, coding_f=0.5, verbose=True, face_fillin_pattern=False, real_face_start_from=2000):
     if sparse_coding:
         assert aug_pattern_type!='face'
     if verbose:
         print(f'Loading burnin/fillin {sample_num} {aug_pattern_type} patterns of {feature_num} dimension')
     if aug_pattern_type=='face':
+        if face_fillin_pattern:
+            pt = load_realface_patterns(8621, feature_num, 50)
+            pt = np.array(pt)[:,real_face_start_from:,:] # 50, sample_num-real_face_start_from, feature_num
+            np.random.seed(2020)
+            pt = pt.reshape([-1, feature_num])
+            random_index = np.random.choice(pt.shape[0], size=pt.shape[0], replace=False)
+            return pt[random_index][:sample_num]
         return load_genface_patterns(sample_num, feature_num)
     elif aug_pattern_type=='rand':
         return load_random_pattern(sample_num, feature_num, sparse_coding=sparse_coding, coding_f=coding_f)
@@ -141,9 +153,11 @@ def load_traintest_patterns(sample_num, feature_num, pattern_type=None, sparse_c
 
 
 if __name__ == '__main__':
-    # load_genface_patterns(10, 2048)
-    a=load_random_pattern(10, 2048)
+    pass
+    # norm_mean, norm_cov, sign_keep_ratio = roblib.load(settings.DATAPATH / "vgg_pca2048_genface_par.pkl")
+    # a=load_genface_patterns(1000, 2048)
+    # a=load_random_pattern(10, 2048)
     # load_traintest_patterns(4000, 2048, pattern_type='face')
-    # vgg_preprocess()
+    #vgg_preprocess()
     # features, test_type = load_traintest_patterns(4000, 2048, pattern_type='face')
     # features = load_aux_patterns(4000, 256, aug_pattern_type='face')

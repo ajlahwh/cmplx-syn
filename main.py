@@ -1,4 +1,10 @@
-
+"""
+The main entry.
+Usage:
+python main.py -t exp_name
+python main.py -a exp_name
+python main.py -p exp_name
+"""
 import os
 import argparse
 from training import train_experiment, monitor_experiment
@@ -13,6 +19,7 @@ parser.add_argument('-m', '--monitor', help='Monitoring', nargs='+', default='no
 parser.add_argument('-a', '--analyze', help='Analyzing', nargs='+', default='none')
 parser.add_argument('-p', '--plot', help='Plotting', nargs='+', default='none')
 parser.add_argument('-f', '--filter', help='file filtering string', type=str, default='none')
+parser.add_argument('-j', '--jobs', help='num of jobs', type=str, default='1')
 
 args = parser.parse_args()
 
@@ -24,6 +31,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 if args.train == 'none':
     args.train = []
 
+# -q for pre-specified experiment
 quick_exp_name='local_test'
 quick_plot_name='local_test'
 
@@ -34,10 +42,13 @@ for name in args.train:
     train_experiment(name,)
 
 # Monitor
+if args.monitor == 'none':
+    args.monitor = []
+
 for name in args.monitor:
     if name =='q':
         name = quick_exp_name
-    monitor_experiment(name,)
+    monitor_experiment(name, int(args.jobs))
 
 # Analysis
 if args.analyze == 'none':

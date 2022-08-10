@@ -112,7 +112,7 @@ def _vary_config_combinatorial(base_config, config_ranges):
     configs, config_diffs = list(), list()
     for i in range(n_max):
         config_diff = dict()
-        indices = np.unravel_index(i, dims=dims)
+        indices = np.unravel_index(i, shape=dims)
         # Set up new config
         for key, index in zip(keys, indices):
             config_diff[key] = config_ranges[key][index]

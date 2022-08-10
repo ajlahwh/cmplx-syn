@@ -1,3 +1,6 @@
+"""
+General plot functions for making figures
+"""
 import numpy as np
 import roblib
 import settings
@@ -123,6 +126,7 @@ def tstar_vs_var_all():
 def get_reg_coef(x,y,get_reg=False):
     regr = linear_model.LinearRegression()
     # print(x.reshape(-1, 1),y)
+    x = np.array(x)
     regr.fit(x.reshape(-1, 1),y)
     coef=regr.coef_[0]
     if get_reg:
@@ -131,6 +135,7 @@ def get_reg_coef(x,y,get_reg=False):
 
 
 def plot_module(save_folder_name, compared_models, comparison_plot_params, save=True):
+    plt.ion()
     all_model_stats = pd.DataFrame()
     for model_path, model_id, model_color in compared_models:
         if not os.path.exists(settings.MODELPATH / model_path):
@@ -160,6 +165,7 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
         else:  # pattern_type == 'rand' and test_type == 'same':
             tstar_curve_params = (0, 'RD', '--', 'C0', 'x', 6)
         return tstar_curve_params
+
 
     for metric_type in metric_types:
         models_same_m = all_model_stats[all_model_stats['metric_type']==metric_type]
@@ -199,13 +205,14 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                     ax.tick_params(which='minor', width=0.25)
                     plt.title(plot['title'])
                     plt.plot(plot['xlim'], [row['perf_thre'], row['perf_thre']], '--', color='gray')
-                    # leg = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),fancybox=True, shadow=False, ncol=1)
+                    leg = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),fancybox=True, shadow=False, ncol=1)
                     # leg.set_title(plot['legendtitle'])
                     if save:
                         filename = save_path / f"{plot['metric_save_name']}_{plot['pattern_save_name']}.pdf"
                         plt.savefig(filename, bbox_inches="tight")
                         print('Saved ', filename)
                     plt.show()
+                    plt.close()
 
         if 'tstar_type' in comparison_plot_params:
             if np.isnan(models_same_m.iloc[0]['tstar']):
@@ -295,6 +302,7 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                 plt.savefig(filename, bbox_inches="tight")
                 print('Saved ', filename)
             plt.show()
+            plt.close()
 
         if 'init_type' in comparison_plot_params:
             fig, ax = plot_start(square=True)
@@ -330,3 +338,5 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                 plt.savefig(filename, bbox_inches="tight")
                 print('Saved ', filename)
             plt.show()
+            plt.close()
+    plt.ioff()

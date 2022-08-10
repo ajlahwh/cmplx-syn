@@ -7,6 +7,9 @@ import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import norm
+from datasets import load_aux_patterns
+
+
 def set_seed(manualSeed):
     np.random.seed(manualSeed)
     random.seed(manualSeed)
@@ -370,7 +373,7 @@ class Memorynet(object):
         self.train_all_neurons(train_features[sample_idx + 1:])
         # print('Time passed ',time_pred, time_run, 'Count:',count_pred, count_run)
 
-        self.show_memory_distribution(memory_pre_distribution, memory_coding_level, probe_coding_level, pos_times)
+        # self.show_memory_distribution(memory_pre_distribution, memory_coding_level, probe_coding_level, pos_times)
 
         return r_signal.cpu().numpy(), io_signal.cpu().numpy() #[probe_time, test_num, ref_sample]
 
@@ -490,11 +493,12 @@ class Memorynet(object):
         plt.show()
 
 
-    def monitor_snr_during_training(self, probe_pattern, train_features, monitored_signal_thre=0.5):
+    def monitor_snr_during_training(self, probe_pattern,
+                                    monitored_signal_thre=None, config=None):
         # probe_pattern: [1, neuron_num]
         sample_num, neuron_num = probe_pattern.shape
+        target_present_time = config['rpt']
         assert sample_num == 1
-        probe_time, _ = train_features.shape
 
         dtype = torch.float16#int8
         feature_cont = np.unique(probe_pattern)
@@ -504,8 +508,8 @@ class Memorynet(object):
             assert feature_cont[0] == -1 and feature_cont[1] == 1
         probe_pattern_numpy = probe_pattern
         probe_pattern = torch.from_numpy(probe_pattern).to(dtype=dtype).to(device=self.device)
-        io_signal = torch.zeros([probe_time], device=self.device)
-        r_signal = torch.zeros([probe_time], device=self.device)
+        io_signal = [] #torch.zeros([probe_time], device=self.device)
+        r_signal = [] #torch.zeros([probe_time], device=self.device)
 
         probe_features, probe_labels = self.circ.get_feature_label_ensemble_from_samples(probe_pattern.reshape((1, neuron_num)))
         coef_delta, _ = self.neurons.local_learning_update(probe_features, probe_labels, sparse_coding=self.sparse_coding, coding_f=self.coding_f)
@@ -517,33 +521,43 @@ class Memorynet(object):
             neuron_num-1, neuron_num)).to(dtype=dtype).to(device=self.device)
 
         monitored_signal = 0
-        present_time = []
-        for sample_idx in range(probe_time):
+        present_time_collect = []
+        present_time_count = 0
+        sample_idx = 0
+        cycle_sample_num = 1000
+        while present_time_count < target_present_time:
+            if sample_idx % cycle_sample_num == 0:
+                train_features = load_aux_patterns(cycle_sample_num, config['dim_num'],
+                   aug_pattern_type=config['pattern_type'], verbose=False)
             if monitored_signal <= monitored_signal_thre:
                 self.train_all_neurons(probe_pattern_numpy)
-                present_time.append(sample_idx)
+                present_time_collect.append(sample_idx)
+                present_time_count += 1
             else:
-                self.train_all_neurons(train_features[sample_idx:sample_idx+1])
+                idx = sample_idx % cycle_sample_num
+                self.train_all_neurons(train_features[idx:idx+1])
 
             coef = self.neurons.coef_[0, :, :]  # neuron_num-1, num_neuron
             memory = self.neurons.forward(probe_features)# 1, neuron_num
 
-            r_signal[sample_idx] = 1-torch.mean(((memory - probe_pattern).abs()))
-            io_signal[sample_idx] = torch.mean(coef * coef_delta)
-            monitored_signal = r_signal[sample_idx]
-        return r_signal.cpu().numpy(), io_signal.cpu().numpy(), np.array(present_time)
+            r_signal.append((1-torch.mean(((memory - probe_pattern).abs()))).cpu().numpy())
+            io_signal.append((torch.mean(coef * coef_delta)).cpu().numpy())
+            monitored_signal = io_signal[-1]
+            sample_idx += 1
+        return np.array(r_signal), np.array(io_signal), np.array(present_time_collect)
 
 
 
 
 if __name__ == '__main__':
-    neuron_num = 2048
-    feature_num = neuron_num - 1
-    set_seed(0)
-    device = 'cuda'
-    bcs1 = BCSLayer(beaker_num=4, feature_num=feature_num, neuron_num=neuron_num, isdiscrete=True,
-                    ).to(device)
-    features1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, feature_num, neuron_num))).to(device)
-    labels1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, neuron_num))).to(device)
-    bcs1.set_eval_mode()
+    pass
+    # neuron_num = 2048
+    # feature_num = neuron_num - 1
+    # set_seed(0)
+    # device = 'cuda'
+    # bcs1 = BCSLayer(beaker_num=4, feature_num=feature_num, neuron_num=neuron_num, isdiscrete=True,
+    #                 ).to(device)
+    # features1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, feature_num, neuron_num))).to(device)
+    # labels1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, neuron_num))).to(device)
+    # bcs1.set_eval_mode()
     #bcs1.fit(features1, labels1)

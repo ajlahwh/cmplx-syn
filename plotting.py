@@ -1,3 +1,7 @@
+"""
+Plotting all experiments for the paper.
+"""
+
 import numpy as np
 import roblib
 import settings
@@ -69,6 +73,23 @@ def vary_len_b8(name_filter=''):
          },
     )
 
+def co_vary_6_facefillin(name_filter=''):
+    plot_module(
+        'face_fillin',
+        [
+            ('co_vary/model_dim_-128_beak-6_patt-face_seed', 'recent random', 1 / 7),
+            ('co_vary_6_facefillin/model_dim_-128_beak-6_patt-face_seed', 'recent face', 6 / 7),
+         ],
+        {'legendtitle': '',#'tstar_type': 'log',
+
+         # 'no_regr_models': {
+         #     ('face', 'same'): [7,8],
+         #     ('face', 'noisy'): [6,7, 8],
+         #     ('rand', 'same'): [7, 8],
+         # }
+         },
+    )
+
 def vary_dim(name_filter=''):
     plot_module(
         'vary_dim',
@@ -87,6 +108,7 @@ def vary_dim(name_filter=''):
             ('vary_len_b8/model_beak-8_patt-rand_seed',512,1/6),
          ],
         {'legendtitle': 'Number of\nneurons','tstar_type': 'log',
+
          # 'no_regr_models': {
          #     ('face', 'same'): [7,8],
          #     ('face', 'noisy'): [6,7, 8],
@@ -140,7 +162,7 @@ def co_vary(name_filter=''):
             ('co_vary/model_dim_-2048_beak-10_patt-face_seed', 2048, 0 / 7),
          ],
         {'legendtitle': 'Number of\nneurons', 'tstar_type': 'log', 'init_type': 'log',
-         'additional': ['SNRratio'],
+         'additional': ['ioSignal',],#'SNRratio'],
          'no_regr_models': {('face', 'noisy'): [2048]}
          #'no_curve_plot': True,
          }
