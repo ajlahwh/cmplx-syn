@@ -7,22 +7,18 @@ import torch.nn as nn
 import time
 import settings
 import roblib
-from models import BCSLayer, Memorynet
+from models import BCSLayer, Memorynet, set_seed
 from datasets import load_aux_patterns, load_traintest_patterns
 import experiments
 import os.path
 import utils
 import pprint
-import matplotlib.pyplot as plt
 import multiprocessing as mp
 
 
 def train_experiment(experiment,device='cuda'):
     '''
     Training without monitoring SNR
-    :param experiment:
-    :param device:
-    :return:
     '''
     print('Training {:s} experiment'.format(experiment))
     configs = getattr(experiments, experiment)()
@@ -40,12 +36,7 @@ def monitor_process_one_config(config, device):
 
 def monitor_experiment(experiment,n_jobs=1, device='cuda'):
     '''
-
     Training with monitoring SNR
-    :param experiment:
-    :param n_jobs:
-    :param device:
-    :return:
     '''
     print('Training & mornitoring {:s} experiment'.format(experiment))
     configs = getattr(experiments, experiment)()
@@ -86,7 +77,6 @@ def get_test_time_point(max_time_point, inval_type='log'):
     # ...])
 
 def train(config, device='cuda'):
-    plot_train_process = True
     path=settings.MODELPATH / config['save_path']
     os.makedirs(path, exist_ok=True)
     filename = path / 'simulation.bk'
@@ -101,6 +91,7 @@ def train(config, device='cuda'):
     fillin_num = 196608 if 'fillin_num' not in config else config['fillin_num']
     pattern_type = config['pattern_type']
     dim_num = config['dim_num']
+    # set_seed(config['seed'])
     np.random.seed(config['seed'])
     if 'sparse_coding' in config and config['sparse_coding']:
         sparse_coding = config['sparse_coding']
@@ -124,11 +115,11 @@ def train(config, device='cuda'):
     memorynet = Memorynet(device=device, **config)
     print('Memorynet created')
     neg_times, pos_times = get_test_time_point(fillin_num, 'log')
-    pt = 2  # 2 # better use protocol 2 in order to compute the task performance; or use 3
+    pt = 2  # better use protocol 2 in order to compute the task performance; or use 3
 
     save_weight_num = 0
     start = time.time()
-    num_per_block = burnin_num #//60
+    num_per_block = burnin_num
     cur_num = 0
     while cur_num<burnin_num:
         next_num=min(cur_num+num_per_block, burnin_num)
@@ -137,11 +128,8 @@ def train(config, device='cuda'):
             burnin_features[cur_num:next_num], save_weight=save_weight_num, burnin_stage=True)
         # memorynet.show_neurons_coef_distribution()
         cur_num = next_num
-        # if cur_num>10*num_per_block:
-        #     syss.exit()
 
     print(f'Training burnin done. second passed', time.time() - start)
-    # syss.exit()
     r_signal_famil, io_signal_famil, times_famil, \
     r_signal_novel, io_signal_novel, times_novel = memorynet.build_dataset_protocol_during_training(
         traintest_features, fillin_features, neg_times, pos_times, protocol=pt)
@@ -162,9 +150,6 @@ def train(config, device='cuda'):
 def monitor(config, device='cuda'):
     '''
     Monitor SNR to re-present patterns
-    :param config:
-    :param device:
-    :return:
     '''
     path=settings.MODELPATH / config['save_path']
     os.makedirs(path, exist_ok=True)
@@ -177,7 +162,6 @@ def monitor(config, device='cuda'):
     print('Simulating & monitoring',filename)
     burnin_num = 8000 if 'burnin_num' not in config else config['burnin_num']
     sample_num = 500 if 'sample_num' not in config else config['sample_num']
-    # fillin_num = 4000 if 'fillin_num' not in config else config['fillin_num']
     pattern_type = config['pattern_type']
     dim_num = config['dim_num']
     np.random.seed(config['seed'])
@@ -199,7 +183,7 @@ def monitor(config, device='cuda'):
     print('Memorynet created')
     save_weight_num = 0
     start = time.time()
-    num_per_block = burnin_num #//60
+    num_per_block = burnin_num
     cur_num = 0
     while cur_num<burnin_num:
         next_num=min(cur_num+num_per_block, burnin_num)
@@ -208,8 +192,6 @@ def monitor(config, device='cuda'):
             burnin_features[cur_num:next_num], save_weight=save_weight_num, burnin_stage=True)
         # memorynet.show_neurons_coef_distribution()
         cur_num = next_num
-        # if cur_num>10*num_per_block:
-        #     syss.exit()
 
     print(f'Training burnin done. second passed', time.time() - start)
     r_signal_all = []

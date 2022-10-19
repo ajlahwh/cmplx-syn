@@ -9,6 +9,7 @@ import pandas as pd
 from utils import load_config
 from sklearn.metrics import roc_auc_score
 from training import get_test_time_point
+import os
 
 def get_intersect(x, y, thre):
     if (y >= thre).sum()<=1:
@@ -19,8 +20,6 @@ def get_intersect(x, y, thre):
     else:
         below = below[0]
         above = below - 1
-    # print(above,below,x[above],x[below])
-    # assert np.abs(below-above)<=2,(below,above)
     return (x[below] + x[above]) / 2, (y[below] + y[above]) / 2
 
 
@@ -61,8 +60,7 @@ def optimize_decision_point(famil_patterns, novel_patterns, t_axis):
 
 
 def mix_novel_patterns(novel_patterns):
-    s = novel_patterns.shape
-    novel_patterns = np.random.permutation(novel_patterns.flatten()).reshape(s)
+    novel_patterns = np.random.permutation(novel_patterns.T).T
     return novel_patterns
 
 def expand_in_time(x, T=None):
@@ -85,14 +83,17 @@ def compute_perf(model_path_agg, model_paths_same_seed, verbose=True, force_para
     r_signal_novel_allseeds = []
     io_signal_novel_allseeds = []
     for model_path in model_paths_same_seed:
-        analytics = roblib.load(model_path / 'simulation.bk')
+        if os.path.exists(model_path / 'simulation.bk'):
+            analytics = roblib.load(model_path / 'simulation.bk')
+        else:
+            return
         r_signal_famil_allseeds.append(analytics['r_signal_famil'])
         io_signal_famil_allseeds.append(analytics['io_signal_famil'])
         if analytics['r_signal_novel'] is not None:
             r_signal_novel_allseeds.append(analytics['r_signal_novel'])
         if analytics['io_signal_novel'] is not None:
             io_signal_novel_allseeds.append(analytics['io_signal_novel'])
-
+    seed_num = len(r_signal_famil_allseeds)
     r_signal_famil = np.concatenate(r_signal_famil_allseeds, axis=-1)
     io_signal_famil = np.concatenate(io_signal_famil_allseeds, axis=-1)
     r_signal_novel = np.concatenate(r_signal_novel_allseeds, axis=-1)
@@ -121,8 +122,7 @@ def compute_perf(model_path_agg, model_paths_same_seed, verbose=True, force_para
 
     show_posneg_time = False
     t_axis = analytics['times_famil']
-    # print(r_signal_famil.shape, np.argwhere(np.isnan(r_signal_famil)))
-    mixed_signal_novel = mix_novel_patterns(r_signal_famil[:, -1])
+    mixed_signal_novel = mix_novel_patterns(r_signal_famil[:, -1]) # [T, N]->[T, perm(N)]
     for ttype_idx, ttype in enumerate(analytics['test_type'][:-1]): #  ignore the last 'new' type
         def wrap_snr(signal):
             s = signal.mean(-1)
@@ -131,6 +131,8 @@ def compute_perf(model_path_agg, model_paths_same_seed, verbose=True, force_para
             return s, n, snr
         ioSignal, ioNoise, ioSNR = wrap_snr(io_signal_famil[:, ttype_idx])
         rSignal, rNoise, rSNR = wrap_snr(r_signal_famil[:, ttype_idx])
+
+
         SNRratio = rSNR / ioSNR
         SNRratio[ioSNR<=1] = 1
         FC = (r_signal_famil[:, ttype_idx] > mixed_signal_novel).mean(-1)+ \
@@ -162,17 +164,42 @@ def compute_perf(model_path_agg, model_paths_same_seed, verbose=True, force_para
             FD_TPR = FD_TNR = FD
             FD_tstar = np.nan
             FD_TPR_tstar = np.nan
-        if show_posneg_time: # debug
+
+        ioSNR_seedwise = []
+        rSNR_seedwise = []
+        FC_seedwise = []
+        FD_seedwise = []
+        for i in range(seed_num):
+            equal_sample_size = 200
+            ios = io_signal_famil_allseeds[i][...,:equal_sample_size]
+            rs = r_signal_famil_allseeds[i][...,:equal_sample_size]
+            ioSNR_seedwise.append(wrap_snr(ios[:, ttype_idx])[-1])
+            rSNR_seedwise.append(wrap_snr(rs[:, ttype_idx])[-1])
+            mixed_signal_novel_seed = mix_novel_patterns(rs[:, -1])  # [T, N]->[T, perm(N)]
+            FCs = (rs[:, ttype_idx] > mixed_signal_novel_seed).mean(-1) + \
+                 (rs[:, ttype_idx] == mixed_signal_novel_seed).mean(-1) / 2
+            if np.sum(FD_T_thre) >0:
+                FD_decision_point = optimize_decision_point(
+                    rs[FD_T_thre, ttype_idx], mixed_signal_novel_seed[FD_T_thre], t_axis[FD_T_thre])
+                FDs, _, _ = accuracy_at_decision_point(rs[:, ttype_idx], mixed_signal_novel_seed,
+                                                            FD_decision_point)
+            else:
+                FDs = np.nan
+            FC_seedwise.append(FCs)
+            FD_seedwise.append(FDs)
+
+
+        if show_posneg_time: # for debugging
             ioSignal, ioNoise, ioSNR = wrap_snr(np.concatenate([io_signal_novel,io_signal_famil],0)[:, ttype_idx])
             rSignal, rNoise, rSNR = wrap_snr(np.concatenate([r_signal_novel,r_signal_famil],0)[:, ttype_idx])
             t_axis = np.concatenate([analytics['times_novel'], analytics['times_famil']],0)
             ioSNR_tstar = rSNR_tstar = FC_tstar = TPR_tstar = FD_tstar = AUC_tstar = 0
 
         model_stat = pd.DataFrame({
-            'metric_type': pd.Series(['ioSignal', 'ioNoise', 'ioSNR', 'rSignal', 'rNoise', 'rSNR', 'FC', 'TPR', 'FD', 'SNRratio','AUC', 'FD_TPR', 'FD_TNR']),
-            'perf': pd.Series([ioSignal, ioNoise, ioSNR, rSignal, rNoise, rSNR, FC, TPR, FD, SNRratio, AUC, FD_TPR, expand_in_time(FD_TNR)]),
-            'perf_thre': pd.Series([np.nan, np.nan, SNR_thre, np.nan, np.nan, SNR_thre, FC_thre, TPR_thre, FD_thre, np.nan, AUC_thre, FD_thre, np.nan]),
-            'tstar': pd.Series([np.nan, np.nan, ioSNR_tstar, np.nan, np.nan, rSNR_tstar, FC_tstar, TPR_tstar, FD_tstar, np.nan, AUC_tstar, FD_TPR_tstar, np.nan]),
+            'metric_type': pd.Series(['ioSignal', 'ioNoise', 'ioSNR', 'rSignal', 'rNoise', 'rSNR', 'FC', 'TPR', 'FD', 'SNRratio','AUC', 'FD_TPR', 'FD_TNR', 'ioSNR_seedwise','rSNR_seedwise','FC_seedwise','FD_seedwise',]),
+            'perf': pd.Series([ioSignal, ioNoise, ioSNR, rSignal, rNoise, rSNR, FC, TPR, FD, SNRratio, AUC, FD_TPR, expand_in_time(FD_TNR), ioSNR_seedwise,rSNR_seedwise, FC_seedwise,FD_seedwise]),
+            'perf_thre': pd.Series([np.nan, np.nan, SNR_thre, np.nan, np.nan, SNR_thre, FC_thre, TPR_thre, FD_thre, np.nan, AUC_thre, FD_thre, np.nan, SNR_thre, SNR_thre,FC_thre,FD_thre]),
+            'tstar': pd.Series([np.nan, np.nan, ioSNR_tstar, np.nan, np.nan, rSNR_tstar, FC_tstar, TPR_tstar, FD_tstar, np.nan, AUC_tstar, FD_TPR_tstar, np.nan, np.nan,np.nan,np.nan,np.nan]),
         })
         model_stat['model_name'] = str(model_path_agg)
         model_stat['is_pos_time'] = True

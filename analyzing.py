@@ -48,44 +48,27 @@ def get_model_path_in_exp(exp_name, name_filter=''):
 def analyze_path(exp_name, name_filter, force_params=None):
     analysis_module(get_model_path_in_exp(exp_name, name_filter), force_params=force_params)
 
-
-def local_test(name_filter=''):
-    analyze_path('local_test', name_filter)
-
-
-def test_sample_effect(name_filter=''):
-    analyze_path('test_sample_effect', name_filter)
-
-
-
-def test_neuron_num(name_filter=''):
-    analyze_path('test_neuron_num', name_filter)
-
 def vary_len_b7(name_filter=''):
     analyze_path('vary_len_b7', name_filter)
-
 
 def vary_len_b8(name_filter=''):
     analyze_path('vary_len_b8', name_filter)
 
-
-def fixed_len_b8_level128(name_filter=''):
-    analyze_path('fixed_len_b8_level128', name_filter)
-
-
 def monitor_snr_500_128levels(name_filter=''):
     analyze_path('monitor_snr_500_128levels', name_filter)
 
-
 def vary_dim(name_filter=''):
     analyze_path('vary_dim', name_filter)
-
 
 def big_simple(name_filter=''):
     force_params = {'SNR_thre': 0.5}
     analyze_path('big_simple', name_filter, force_params)
     analyze_path('big_simple_prob', name_filter, force_params)
 
+def fair_comp_2048(name_filter=''):
+    force_params = {'SNR_thre': 0.5}
+    analyze_path('sparse_weight', name_filter, force_params)
+    analyze_path('big_simple2048_prob', name_filter, force_params)
 
 def co_vary(name_filter=''):
     force_params = {'SNR_thre': 0.5}
@@ -93,36 +76,12 @@ def co_vary(name_filter=''):
     analyze_path('vary_len_b7', name_filter, force_params)
     analyze_path('vary_len_b8', name_filter, force_params)
 
-
 def co_vary_6_facefillin(name_filter=''):
     force_params = {'SNR_thre': 0.5}
     analyze_path('co_vary_6_facefillin', name_filter, force_params)
 
-def co_vary_lowthre(name_filter=''):
-    force_params = {'SNR_thre': 0.1, 'FC_thre': 0.53, 'FD_thre': 0.53, 'AUC_thre': 0.53}
-    analyze_path('co_vary', name_filter, force_params)
-    analyze_path('vary_len_b7', name_filter, force_params)
-    analyze_path('vary_len_b8', name_filter, force_params)
-
-def test_prob(name_filter=''):
-    analyze_path('test_prob', name_filter)
-
-
-def test_coding_f(name_filter=''):
-    analyze_path('test_coding_f', name_filter)
-
-
 def big_simple_prob(name_filter=''):
     analyze_path('big_simple_prob', name_filter)
-
-
-def big_as_mel(name_filter=''):
-    analyze_path('big_as_mel', name_filter, force_params={'SNR_thre': 5, 'TNR_thre': 0.99, 'TPR_thre': 0.99})
-
-
-def big_as_mel_match(name_filter=''):
-    analyze_path('big_as_mel_match', name_filter, force_params={'SNR_thre': 5, 'TNR_thre': 0.99, 'TPR_thre': 0.99})
-
 
 def all(name_filter=''):
     path = settings.MODELPATH

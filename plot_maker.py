@@ -11,10 +11,10 @@ cmap = matplotlib.cm.get_cmap('plasma')
 from pathlib import Path
 import pandas as pd
 from sklearn import linear_model
-from scipy.signal import medfilt
 from scipy.ndimage import gaussian_filter
 from training import get_test_time_point
-show_posneg_time = False # debug
+show_posneg_time = False # for debugging
+
 def set_mpl():
     import matplotlib as mpl
 
@@ -44,14 +44,6 @@ def plot_start(square=True,figsize=None,ticks_pos=True):
         ax.yaxis.set_ticks_position('left')
     return fig,ax
 
-
-# def force_plot_params(save_folder_name, metric_type):
-#     return {}
-#     if save_folder_name == 'fair_comp' and metric_type in ['ioSNR', 'rSNR']:
-#         return {'ylim': [0.01, 10**3]}
-#     else:
-#         return {}
-
 def metric_plot_params(metric_type):
     plot = {}
     plot['metric_save_name'] = metric_type
@@ -64,13 +56,26 @@ def metric_plot_params(metric_type):
         plot['xlim'] = [1,2*10**6]
         plot['ylim'] = [0.05, 10**3]
         plot['yticks'] = [0.1, 1, 10, 100,10**3]
-        if show_posneg_time: # debug
+        if show_posneg_time:
             plot['plot'] = plt.plot
             plot['xlabel'] = 'Memory age'
             plot['ylabel'] = metric_type
             plot['xlim'] = [-10**3,10**3]
             plot['ylim'] = [0.0, 2.3]
             plot['yticks'] = [0.1, 1]#, 10]#, 100]
+    elif metric_type in ['ioSNR_seedwise','rSNR_seedwise']:
+        def plot_seed(x, y, label,color):
+            dt = np.array(y)
+            y = dt.mean(0)
+            std = dt.std(0)
+            plt.loglog(x, y, label=label,color=color)
+            plt.fill_between(x, np.maximum(y-std,10**-10), y + std, facecolor=color, alpha=0.3,edgecolor=None)
+        plot['plot'] = plot_seed
+        plot['xlabel'] = 'Memory age'
+        plot['ylabel'] = metric_type[:-9]
+        plot['xlim'] = [1,2*10**6]
+        plot['ylim'] = [0.05, 10**3]
+        plot['yticks'] = [0.1, 1, 10, 100,10**3]
     elif metric_type in ['TPR']:
         plot['plot'] = plt.semilogx
         plot['xlabel'] = 'Memory age'
@@ -86,6 +91,19 @@ def metric_plot_params(metric_type):
         plot['ylim'] = [0.5, 1.02]
         plot['yticks'] = [0.5, 0.6, 0.7, 0.8, 0.9, 1]
         plot['smooth'] = lambda x: gaussian_filter(x, 1, mode='nearest')
+    elif metric_type in ['FC_seedwise','FD_seedwise']:
+        def plot_seed(x, y, label,color):
+            dt = np.array(y)
+            y = dt.mean(0)
+            std = dt.std(0)
+            plt.semilogx(x, y, label=label,color=color)
+            plt.fill_between(x, np.maximum(y-std,10**-10), y + std,  facecolor=color, alpha=0.3,edgecolor=None)
+        plot['plot'] = plot_seed
+        plot['xlabel'] = 'Memory age'
+        plot['ylabel'] = metric_type[:-9] + ' performance'
+        plot['xlim'] = [1,2*10**6]
+        plot['ylim'] = [0.5, 1.02]
+        plot['yticks'] = [0.5, 0.6, 0.7, 0.8, 0.9, 1]
     elif metric_type in ['FD_TPR', 'FD_TNR']:
         plot['plot'] = plt.semilogx
         plot['xlabel'] = 'Memory age'
@@ -125,7 +143,6 @@ def tstar_vs_var_all():
 
 def get_reg_coef(x,y,get_reg=False):
     regr = linear_model.LinearRegression()
-    # print(x.reshape(-1, 1),y)
     x = np.array(x)
     regr.fit(x.reshape(-1, 1),y)
     coef=regr.coef_[0]
@@ -144,11 +161,12 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
         model_stats['id'] = model_id
         model_stats['color'] = model_color
         all_model_stats = all_model_stats.append(model_stats, ignore_index=True)
-    # print(all_model_stats)
-    metric_types = list(set.intersection({'ioSNR', 'rSNR', 'FC', 'TPR', 'FD', 'AUC', 'FD_TPR', 'FD_TNR'},
+    if 'skip_default_metric' not in comparison_plot_params or not comparison_plot_params['skip_default_metric']:
+        metric_types = list(set.intersection({'ioSNR', 'rSNR', 'FC', 'TPR', 'FD', 'AUC', 'FD_TPR', 'FD_TNR'},
                                          set(pd.unique(all_model_stats['metric_type']))))
+    else:
+        metric_types = []
     pattern_types = ['rand', 'face']
-    test_types = ['same', 'noisy']
     if show_posneg_time:
         metric_types = ['ioSNR', 'rSNR', 'ioSignal', 'ioNoise']
     if 'additional' in comparison_plot_params:
@@ -172,16 +190,16 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
         if 'no_curve_plot' not in comparison_plot_params or not comparison_plot_params['no_curve_plot']:
             for pattern_type in pattern_types:
                 models_same_mp = models_same_m[models_same_m['pattern_type']==pattern_type]
-                if len(models_same_mp) == 0: continue
-                for test_type in test_types:
-                    print('Making plots for ', metric_type, pattern_type, test_type)
+                if len(models_same_mp) == 0:
+                    continue
+                for test_type in pd.unique(models_same_mp['test_type']):
                     models_same_mpt = models_same_mp[models_same_mp['test_type']==test_type]
                     if len(models_same_mpt) == 0: continue
+                    print('Making plots for ', metric_type, pattern_type, test_type)
                     fig, ax = plot_start(square=True)
                     plot = {**comparison_plot_params,
                             **metric_plot_params(metric_type),
                             **pattern_test_type_plot_params(pattern_type, test_type)}
-                    # plot.update(force_plot_params(save_folder_name, metric_type))
                     assert len(pd.unique(models_same_mpt['perf_thre']))==1
                     for idx, row in models_same_mpt.iterrows():
                         perf = row['perf']
@@ -197,7 +215,6 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                     plt.ylim(plot['ylim'])
                     plt.yticks(plot['yticks'])
                     plt.xticks(plot['xticks'])
-                    # ax.tick_params(axis='both', which='both', direction='in', top='off', bottom='on', left='on', right='off')
                     locmin = matplotlib.ticker.LogLocator(base=10.0, subs=np.arange(0.1, 1, 0.1), numticks=1+len(plot['xticks']))
                     ax.xaxis.set_minor_locator(locmin)
                     ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
@@ -205,13 +222,14 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                     ax.tick_params(which='minor', width=0.25)
                     plt.title(plot['title'])
                     plt.plot(plot['xlim'], [row['perf_thre'], row['perf_thre']], '--', color='gray')
-                    leg = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),fancybox=True, shadow=False, ncol=1)
-                    # leg.set_title(plot['legendtitle'])
+                    if 'has_legend' not in plot or plot['has_legend']:
+                        leg = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),fancybox=True, shadow=False, ncol=1)
+                        leg.set_title(plot['legendtitle'])
                     if save:
                         filename = save_path / f"{plot['metric_save_name']}_{plot['pattern_save_name']}.pdf"
+                        plt.show()
                         plt.savefig(filename, bbox_inches="tight")
                         print('Saved ', filename)
-                    plt.show()
                     plt.close()
 
         if 'tstar_type' in comparison_plot_params:
@@ -221,11 +239,9 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
             tstar_type = comparison_plot_params['tstar_type']
             for pattern_type in pattern_types:
                 models_same_mp = models_same_m[models_same_m['pattern_type']==pattern_type]
-                test_types = pd.unique(models_same_mp['test_type'])
-                for test_type in test_types:
+                for test_type in pd.unique(models_same_mp['test_type']):
                     models_same_mpt = models_same_mp[models_same_mp['test_type']==test_type]
                     idx, label, linestyle, color, marker, msize = summary_curve_params(pattern_type, test_type)
-                    # print(models_same_mpt)
                     var = models_same_mpt['id'].to_numpy()
                     t_star_list = models_same_mpt['tstar'].to_numpy()
 
@@ -234,8 +250,6 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                         var = var[locs]
                         t_star_list = t_star_list[locs]
 
-                        # coef, regr, score = get_reg_coef(np.log2(var), np.log2(t_star_list), get_reg=True)
-                        # y_pred = 2 ** regr(np.log2(var))
                         reg_indices = np.ones(var.shape).astype(np.bool)
                         if 'no_regr_models' in comparison_plot_params and \
                             (pattern_type, test_type) in comparison_plot_params['no_regr_models']:
@@ -253,21 +267,19 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                         plt.ylim([1, 10 ** 6])
                         plt.yticks([1, 10 ** 2, 10 ** 4, 10 ** 6])
                         plt.ylabel(metric_type+r' $t^*$')
-                        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
+                        if 'has_legend' not in plot or plot['has_legend']:
+                            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
                     elif tstar_type == 'linear':
                         locs = np.logical_not(np.isnan(t_star_list))
                         var = var[locs]
                         t_star_list = t_star_list[locs]
 
-                        # coef, regr, score = get_reg_coef(np.log2(var), np.log2(t_star_list), get_reg=True)
-                        # y_pred = 2 ** regr(np.log2(var))
                         reg_indices = np.ones(var.shape).astype(np.bool)
                         if 'no_regr_models' in comparison_plot_params and \
                             (pattern_type, test_type) in comparison_plot_params['no_regr_models']:
                             no_regr_models = comparison_plot_params['no_regr_models'][(pattern_type, test_type)]
                             for model_var in no_regr_models:
                                 reg_indices[var == model_var] = False
-                        # coef, regr, score = get_reg_coef(np.log2(var)[reg_indices], (np.log2(t_star_list) + np.log2(np.log2(var)))[reg_indices], get_reg=True)
                         coef, regr, score = get_reg_coef(var[reg_indices],
                                                          np.log2(t_star_list)[reg_indices],
                                                          get_reg=True)
@@ -281,7 +293,8 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                         plt.ylim([1, 10 ** 6])
                         plt.yticks([1, 10 ** 2, 10 ** 4, 10 ** 6])
                         plt.ylabel(metric_type+r' $t^*$')
-                        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
+                        if 'has_legend' not in plot or plot['has_legend']:
+                            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
                     elif tstar_type == 'bar':
                         cmp_num=len(var)
                         coef=t_star_list[-1]/t_star_list[0]
@@ -294,7 +307,8 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                         plt.ylim([1, 10 ** 6])
                         plt.yticks([1, 10 ** 2, 10 ** 4, 10 ** 6])
                         plt.ylabel(metric_type+r' $t^*$')
-                        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
+                        if 'has_legend' not in plot or plot['has_legend']:
+                            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
                     else:
                         raise NotImplementedError
             if save:
@@ -309,8 +323,7 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
             init_type = comparison_plot_params['init_type']
             for pattern_type in pattern_types:
                 models_same_mp = models_same_m[models_same_m['pattern_type']==pattern_type]
-                test_types = pd.unique(models_same_mp['test_type'])
-                for test_type in test_types:
+                for test_type in pd.unique(models_same_mp['test_type']):
                     models_same_mpt = models_same_mp[models_same_mp['test_type']==test_type]
                     idx, label, linestyle, color, marker, msize = summary_curve_params(pattern_type, test_type)
                     var = models_same_mpt['id'].to_numpy()
@@ -326,7 +339,8 @@ def plot_module(save_folder_name, compared_models, comparison_plot_params, save=
                         plt.xticks([10, 100, 1000])
                         plt.xlabel('Number of neurons')
                         plt.ylabel(metric_type+r' $initial perf$')
-                        plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
+                        if 'has_legend' not in plot or plot['has_legend']:
+                            plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox=True, shadow=False, ncol=1)
                     elif init_type == 'linear':
                         ...
                     elif init_type == 'bar':

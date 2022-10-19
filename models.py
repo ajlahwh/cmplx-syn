@@ -39,7 +39,7 @@ def get_phi_coef(x, y):
 class BCSLayer(nn.Module):
     def __init__(self, beaker_num=1, level_num=32, beakers=None, feature_num=63, neuron_num=64,
                  n=2, alpha=0.25, leaky_coef=1,
-                 isdiscrete=True, prob_encoding=1, sparse_coding=False, inv_coding_f=2, isbounded=True,**kw):
+                 isdiscrete=True, prob_encoding=1, sparse_coding=False, inv_coding_f=2, isbounded=True, pre_feature_ratio=1.0, **kw):
         super().__init__()
         assert beakers is None
         beakers = [level_num] * beaker_num
@@ -56,6 +56,15 @@ class BCSLayer(nn.Module):
         self.burnin_mode = True
         self.sparse_coding = sparse_coding
         self.isbounded = isbounded
+        self.pre_feature_ratio = pre_feature_ratio
+        allowed_feature_num = int(np.round(neuron_num * self.pre_feature_ratio)) - 1 # -1 due to intercept
+        feature_mask = torch.zeros([feature_num, neuron_num])
+        if self.pre_feature_ratio < 1:
+            for n_idx in range(neuron_num):
+                idx = np.random.choice(range(feature_num), size=allowed_feature_num, replace=False)
+                feature_mask[idx, n_idx] = 1
+        else:
+            feature_mask = torch.ones([feature_num, neuron_num])
         if sparse_coding:
             self.coding_f = 1/inv_coding_f
         else:
@@ -75,14 +84,15 @@ class BCSLayer(nn.Module):
         self.register_buffer('lower_bound', lower_bound)
         self.register_buffer('coef_', coef_)
         self.register_buffer('intercept_', intercept_)
+        self.register_buffer('feature_mask', feature_mask)
 
         for beaker_idx in range(self.beaker_num):
             i = beaker_idx + 1
             self.upper_bound[beaker_idx, 0, 0] = (self.beakers[beaker_idx] - self.isdiscrete) / 2
             self.lower_bound[beaker_idx, 0, 0] = -self.upper_bound[beaker_idx, 0, 0]
             self.transition_mat[beaker_idx, beaker_idx] = 1
-            to_next = n ** (-2 * i + 1) * alpha
-            to_prev = n ** (-2 * i + 2) * alpha
+            to_next = self.n ** (-2 * i + 1) * alpha
+            to_prev = self.n ** (-2 * i + 2) * alpha
 
             if i > 1:  # has previous beaker
                 self.transition_mat[beaker_idx, beaker_idx - 1] = to_prev
@@ -166,14 +176,13 @@ class BCSLayer(nn.Module):
         # intercept[0]: neuron_num
         assert len(features.shape)==3
         features = features - self.pre_pattern_mean
-        return torch.sum(features * self.coef_[0], 1) + self.intercept_[0]
+        return torch.sum(features * (self.feature_mask * self.coef_[0]), 1) + self.intercept_[0]
         # batch_size,neuron_num
 
 
     def forward_thresholding(self, memory_pre):
         if self.sparse_coding:
             thre = torch.quantile(memory_pre, 1-self.coding_f, axis=1,keepdim=True)
-            # thre = self.coding_f * (0.5 - self.coding_f) * memory_pre.shape[-1]
         else:
             thre = 0
         return 2 * (memory_pre >= thre) - 1
@@ -197,14 +206,12 @@ class BCSLayer(nn.Module):
 
         if sparse_coding:
             assert torch.sum(features==-1)>0
-            pre_pattern_mean = 2*coding_f-1#coding_f
-            post_pattern_mean = 2*coding_f-1#coding_f
-            std_delta_w = 1 #coding_f*(1-coding_f)
-            intercept_learning_rate = 0 # 1/np.sqrt(std_delta_w) # do not need bias here
+            pre_pattern_mean = 2*coding_f-1
+            post_pattern_mean = 2*coding_f-1
+            std_delta_w = 1
+            intercept_learning_rate = 0
             coef_learning_rate = 1/std_delta_w
             delta_weight_mean = 0
-            # print(std_delta_w, intercept_learning_rate, coef_learning_rate)
-            # syss.exit()
         else:
             pre_pattern_mean = 0
             post_pattern_mean = 0
@@ -214,11 +221,9 @@ class BCSLayer(nn.Module):
         features = features - pre_pattern_mean
         labels = labels - post_pattern_mean
         delta_intercept = intercept_learning_rate * labels #
-        delta_coef = coef_learning_rate * (features * labels[:, None, :] - delta_weight_mean)
+        delta_coef = coef_learning_rate * (self.feature_mask * features * labels[:, None, :] - delta_weight_mean)
         self.pre_pattern_mean = pre_pattern_mean
         self.post_pattern_mean = post_pattern_mean
-        # print(np.unique(delta_intercept.cpu().detach().numpy()),np.unique(delta_coef.cpu().detach().numpy()), post_pattern_mean)
-        # syss.exit()
         return delta_coef, delta_intercept # batch_size,feature_num,neuron_num; batch_size,neuron_num
 
 
@@ -233,7 +238,6 @@ class Circularize(object):
         self.dim = dim
         h = np.arange(dim)
         h = scipy.linalg.hankel(h, np.concatenate([h[-1:], h[:-1]], 0))
-        #print('In Circularize, h to cuda')
         self.h = torch.from_numpy(h).long().to(device) # dim, dim
 
     def get_feature_label_ensemble_from_samples(self, x):
@@ -255,6 +259,10 @@ class Memorynet(object):
         else:
             self.sparse_coding = False
             self.coding_f = 0.5
+        if 'pre_feature_ratio' in config:
+            self.pre_feature_ratio = config['pre_feature_ratio']
+        else:
+            self.pre_feature_ratio = 1
         self.neurons = BCSLayer(feature_num=dim_num - 1, neuron_num=dim_num, **config).to(device)
         self.circ = Circularize(dim_num, device)
         self.neuron_num = dim_num
@@ -263,7 +271,6 @@ class Memorynet(object):
     def train_all_neurons(self, features, save_weight=0, burnin_stage=False):
         assert len(features.shape) == 2
         sample_num = features.shape[0]
-        #print('In train_all_neurons, features to cuda')
         features= torch.from_numpy(features)#.to(self.device)
         if save_weight != 0:
             weight_history = torch.zeros([save_weight, self.beaker_num, self.neuron_num,
@@ -296,11 +303,9 @@ class Memorynet(object):
         assert sample_num == ref_sample
         feature_cont = np.unique(np.concatenate([np.unique(train_features),np.unique(probe_pattern)],0))
         if self.sparse_coding:
-            assert feature_cont[0] == -1 and feature_cont[1] == 1
-            # assert feature_cont[0] == 0 and feature_cont[1] == 1
+            assert feature_cont[0] == 0 and feature_cont[1] == 1
         else:
             assert feature_cont[0] == -1 and feature_cont[1] == 1
-        #print('In train_all_neurons_probe, probe_pattern to cuda')
         probe_pattern = torch.from_numpy(probe_pattern).to(dtype=dtype).to(device=self.device)
         io_signal = torch.zeros([probe_time, test_num, ref_sample], device=self.device)
         r_signal = torch.zeros([probe_time, test_num, ref_sample], device=self.device)
@@ -322,10 +327,6 @@ class Memorynet(object):
         pattern_probing_times -= run_sample_num
         zero_loc = np.argwhere(pattern_probing_times == 0)
         rate = 0
-        # time_pred = 0
-        # count_pred = 0
-        # time_run = 0
-        # count_run = 0
         memory_pre_distribution = [[] for t in range(probe_time)]
         memory_coding_level = [[] for t in range(probe_time)]
         probe_coding_level = [[] for t in range(probe_time)]
@@ -333,7 +334,6 @@ class Memorynet(object):
             if 0 and rate % 1000 == 0:
                 print(f'while {rate}: {sample_idx}-th sample', end=',')
             rate += 1
-            # start = time.time()
             coef = self.neurons.coef_[0, :, :] # neuron_num-1, num_neuron
             for probe_s, probe_t in zero_loc:
                 memory_pre = self.neurons.forward_linearity(probe_features[:,probe_s])# test_num, neuron_num
@@ -343,8 +343,8 @@ class Memorynet(object):
                     memory_pre_distribution[probe_t].append((memory_pre[0].cpu().detach().numpy()))
                     memory_coding_level[probe_t].append(torch.mean((memory[0]==1)*1.0).cpu().detach().numpy()[()])
                     probe_coding_level[probe_t].append(torch.mean((temp_probe_pattern[0]==1)*1.0).cpu().detach().numpy()[()])
-                    # print(memory_coding_level[probe_t][-1],probe_coding_level[probe_t][-1])
                 if self.sparse_coding:
+                    assert self.pre_feature_ratio == 1.0
                     temp_io_signal = coef * coef_delta[:, probe_s, :, :]
                     for test_idx in range(test_num):
                         postis1_idx = temp_probe_pattern[test_idx] == 1
@@ -356,24 +356,16 @@ class Memorynet(object):
                             0.5*torch.mean(temp_io_signal[test_idx, :, postis0_idx])
                 else:
                     r_signal[probe_t, :, probe_s] = 1-torch.mean(((memory - temp_probe_pattern).abs()), 1)
-                    io_signal[probe_t, :, probe_s] = torch.mean(coef * coef_delta[:, probe_s, :, :], (1,2)) #.to(self.device)
+                    io_signal[probe_t, :, probe_s] = torch.mean(self.neurons.feature_mask * coef * coef_delta[:, probe_s, :, :], (1,2))/self.pre_feature_ratio #.to(self.device)
                     # 0.45 ms for this block in a loop; 2 ms for following fit 1 pattern (256 neurons)
-                    # count_pred += 1
-            # time_pred+=time.time() - start
             if not np.any(pattern_probing_times > 0):
                 break
             run_sample_num = np.min(pattern_probing_times[pattern_probing_times > 0])  # ATTENTION: >0
-            # start = time.time()
             self.train_all_neurons(train_features[sample_idx + 1:sample_idx + 1 + run_sample_num])
-            # time_run+=time.time() - start
-            # count_run+=1
             sample_idx += run_sample_num
             pattern_probing_times -= run_sample_num
             zero_loc = np.argwhere(pattern_probing_times == 0)
         self.train_all_neurons(train_features[sample_idx + 1:])
-        # print('Time passed ',time_pred, time_run, 'Count:',count_pred, count_run)
-
-        # self.show_memory_distribution(memory_pre_distribution, memory_coding_level, probe_coding_level, pos_times)
 
         return r_signal.cpu().numpy(), io_signal.cpu().numpy() #[probe_time, test_num, ref_sample]
 
@@ -435,11 +427,9 @@ class Memorynet(object):
             half_size = sample_size//2
             ref_sample2 = np.arange(0, half_size)
             pattern_probing_times2 = ref_sample2[:, None] + pos_times[None, :]
-            #print(ref_sample2,pattern_probing_times2)
 
             ref_sample1 = np.arange(half_size + probe_max_time, probe_max_time + sample_size)
             pattern_probing_times1 = ref_sample1[:, None] + neg_times[None, :]
-            #print(ref_sample1,pattern_probing_times1)
             assert len(pos_times) == len(neg_times)
             pattern_probing_times = np.concatenate([pattern_probing_times2, pattern_probing_times1], 0)
             train_features = np.concatenate((
@@ -478,7 +468,6 @@ class Memorynet(object):
         for seq_idx in range(seq_num):
             coef = all_coef[seq_idx].flatten()
             intercept = all_intercept[seq_idx].flatten()
-            # coef=coef+np.random.randn(coef.shape[0])*0.000001
             plt.subplot(2, seq_num, seq_idx + 1)
             sns.histplot(coef, color=f'C{seq_idx}', kde=True, stat='density')
             plt.vlines(np.mean(coef), 0, 1, 'k')
@@ -508,8 +497,8 @@ class Memorynet(object):
             assert feature_cont[0] == -1 and feature_cont[1] == 1
         probe_pattern_numpy = probe_pattern
         probe_pattern = torch.from_numpy(probe_pattern).to(dtype=dtype).to(device=self.device)
-        io_signal = [] #torch.zeros([probe_time], device=self.device)
-        r_signal = [] #torch.zeros([probe_time], device=self.device)
+        io_signal = []
+        r_signal = []
 
         probe_features, probe_labels = self.circ.get_feature_label_ensemble_from_samples(probe_pattern.reshape((1, neuron_num)))
         coef_delta, _ = self.neurons.local_learning_update(probe_features, probe_labels, sparse_coding=self.sparse_coding, coding_f=self.coding_f)
@@ -541,23 +530,19 @@ class Memorynet(object):
             memory = self.neurons.forward(probe_features)# 1, neuron_num
 
             r_signal.append((1-torch.mean(((memory - probe_pattern).abs()))).cpu().numpy())
-            io_signal.append((torch.mean(coef * coef_delta)).cpu().numpy())
+            io_signal.append((torch.mean(self.neurons.feature_mask * coef * coef_delta)/self.pre_feature_ratio).cpu().numpy())
             monitored_signal = io_signal[-1]
             sample_idx += 1
         return np.array(r_signal), np.array(io_signal), np.array(present_time_collect)
 
-
-
-
 if __name__ == '__main__':
-    pass
-    # neuron_num = 2048
-    # feature_num = neuron_num - 1
-    # set_seed(0)
-    # device = 'cuda'
-    # bcs1 = BCSLayer(beaker_num=4, feature_num=feature_num, neuron_num=neuron_num, isdiscrete=True,
-    #                 ).to(device)
-    # features1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, feature_num, neuron_num))).to(device)
-    # labels1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, neuron_num))).to(device)
-    # bcs1.set_eval_mode()
-    #bcs1.fit(features1, labels1)
+    neuron_num = 2048
+    feature_num = neuron_num - 1
+    set_seed(0)
+    device = 'cuda'
+    bcs1 = BCSLayer(beaker_num=4, feature_num=feature_num, neuron_num=neuron_num, isdiscrete=True,
+                    ).to(device)
+    features1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, feature_num, neuron_num))).to(device)
+    labels1 = torch.from_numpy(np.random.choice([-1, 1], size=(1, neuron_num))).to(device)
+    bcs1.set_eval_mode()
+    bcs1.fit(features1, labels1)

@@ -34,7 +34,6 @@ def vgg_preprocess(pl_des=None):
 
     # load original vggface
     file = settings.DATAPATH / "name_and_pattern.pkl"
-    file = r'F:\fusilab\oriData\name_and_pattern.pkl'
     with open(file, "rb") as f:
         [name_list, face_list] = pickle.load(f, encoding='bytes')
     labels_name = [x[:7] for x in name_list]
@@ -59,8 +58,6 @@ def vgg_preprocess(pl_des=None):
         final_features.append(features[pose_locs])
     roblib.dump(final_features, settings.DATAPATH / "vgg_pca2048_face.pkl")
 
-    # norm_mean = np.mean(final_features[0], 0) # WHY this not work
-    # norm_cov = np.cov(final_features[0], rowvar=False)
     norm_mean = np.mean(features, 0)
     norm_cov = np.cov(features, rowvar=False)
     sign_keep_ratio = np.mean(bin(final_features[0]) == bin(final_features[1]), 0)
@@ -69,7 +66,7 @@ def vgg_preprocess(pl_des=None):
 
 def load_random_pattern(sample_num, feature_num, sparse_coding=False, coding_f=0.5):
     if sparse_coding:
-        choice_pool = [-1, 1]#[0, 1]
+        choice_pool = [0, 1]
         Pr = [1-coding_f, coding_f]
     else:
         choice_pool = [-1, 1]
@@ -95,7 +92,6 @@ def load_genface_patterns(sample_num, feature_num):
     for i in range(10):
         features[i*sample_num_over10: (i+1)*sample_num_over10] = np.random.multivariate_normal(
             norm_mean[:feature_num], norm_cov[:feature_num, :feature_num], size=sample_num_over10)
-    # return 2 * (features > norm_mean[:feature_num]) - 1
     return bin(features)
 
 def bin(x):
@@ -154,10 +150,3 @@ def load_traintest_patterns(sample_num, feature_num, pattern_type=None, sparse_c
 
 if __name__ == '__main__':
     pass
-    # norm_mean, norm_cov, sign_keep_ratio = roblib.load(settings.DATAPATH / "vgg_pca2048_genface_par.pkl")
-    # a=load_genface_patterns(1000, 2048)
-    # a=load_random_pattern(10, 2048)
-    # load_traintest_patterns(4000, 2048, pattern_type='face')
-    #vgg_preprocess()
-    # features, test_type = load_traintest_patterns(4000, 2048, pattern_type='face')
-    # features = load_aux_patterns(4000, 256, aug_pattern_type='face')
