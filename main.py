@@ -31,14 +31,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = str(args.device)
 if args.train == 'none':
     args.train = []
 
-# -q for pre-specified experiment
-quick_exp_name='local_test'
-quick_plot_name='local_test'
-
 # Train
 for name in args.train:
-    if name =='q':
-        name = quick_exp_name
     train_experiment(name,)
 
 # Monitor
@@ -46,8 +40,6 @@ if args.monitor == 'none':
     args.monitor = []
 
 for name in args.monitor:
-    if name =='q':
-        name = quick_exp_name
     monitor_experiment(name, int(args.jobs))
 
 # Analysis
@@ -55,8 +47,6 @@ if args.analyze == 'none':
     args.analyze = []
 
 for name in args.analyze:
-    if name == 'q':
-        name = quick_exp_name
     func = getattr(analyzing, name)
     if args.filter == 'none':
         func()
@@ -68,8 +58,6 @@ if args.plot == 'none':
     args.plot = []
 
 for name in args.plot:
-    if name=='q':
-        name=quick_plot_name
     func = getattr(plotting, name)
     if args.filter == 'none':
         func()
